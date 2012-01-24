@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project default="build">
+
+	<property environment="env" />
+	<!-- set workingDir e sourceDir properties -->
+	<property name="proj.workDir" value="${env.PWD}" />
+	<property name="proj.sourceDir" value="${proj.workDir}/src" />
+
+	<xmlproperty file=".project" />
+
+	<property name="proj.name" value="${projectDescription.name}" />
+	<echo message="name=[${proj.name}]." />
+
+	<import file="${env.HOME}/qa_common.xml" optional="true" />
+
+	<!-- if/then sem ant-contrib... -->
+	<target name="whereAmI" if="onTheServer">
+		<echo message="...running on the server..." />
+	</target>
+	<target name="javadoc" description="Generate javadoc.">
+		<javadoc use="true" author="true" version="true" overview="overview.html" access="package" sourcepath="src" packagenames="*.*" destdir="${proj.workDir}/javadoc" windowtitle="${proj.name}" noqualifier="java.*:javax.*:com.sun.*" linksource="true">
+			<classpath refid="proj.classpath" />
+			<link href="http://java.sun.com/javase/6/docs/api/" />
+			<header>
+				<![CDATA[<h1>${proj.name}</h1>]]></header>
+	</javadoc>
+</target>
+<path id="proj.classpath">
+
+	<pathelement location="bin" />
+	<pathelement location="." />
+
+	<!-- Apache Commons (Base64) -->
+	<pathelement location="./lib/commons-codec-1.6.jar" />
+
+	<!-- LOG -->
+	<pathelement location="./lib/slf4j-api-1.6.4.jar" />
+	<pathelement location="./lib/slf4j-simple-1.6.4.jar" />
+</path>
+
+<!-- COMITA AS BIBLIOTECAS para o runtime... -->
+<pathconvert property="proj.lib" pathsep=" ">
+	<mapper>
+		<chainedmapper>
+			<!-- remove absolute path -->
+			<flattenmapper />
+			<globmapper from="*" to="lib/*" />
+		</chainedmapper>
+	</mapper>
+	<path>
+		<!-- lib.home contains all jar files, in several subdirectories -->
+		<fileset dir="lib">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+</pathconvert>
+<target depends="whereAmI" name="make">
+	<delete dir="bin" />
+	<delete dir="build" />
+	<delete dir="javadoc" />
+	<mkdir dir="build" />
+	<mkdir dir="build/lib" />
+	<mkdir dir="bin" />
+	<mkdir dir="javadoc" />
+	<javac srcdir="src" destdir="bin" debug="true">
+		<classpath refid="proj.classpath" />
+	</javac>
+	<jar destfile="build/${proj.name}.jar">
+		<manifest>
+			<attribute name="Class-Path" value="${proj.lib}" />
+		</manifest>
+		<fileset dir="bin" />
+	</jar>
+</target>
+
+<target depends="make" name="teste">
+</target>
+<target name="build" depends="teste" />
+</project>
