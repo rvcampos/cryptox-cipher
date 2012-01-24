@@ -8,12 +8,12 @@ package br.com.cryptox;
  * Feel free to use this class/project, if you enhance it, please, contact me!
  * 
  * contact: renanvcampos@gmail.com
- * =============================================================================
  */
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
-import java.security.AlgorithmParameterGenerator;
 import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.security.Security;
 import java.security.spec.AlgorithmParameterSpec;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.InvalidParameterSpecException;
@@ -24,11 +24,19 @@ import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.PBEParameterSpec;
+import javax.crypto.spec.RC5ParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import javax.xml.ws.spi.Provider;
 
 import org.apache.commons.codec.binary.Base64;
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
+import org.bouncycastle.crypto.KeyGenerationParameters;
+import org.bouncycastle.crypto.params.RC5Parameters;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.jce.provider.symmetric.Blowfish;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,6 +66,7 @@ public class CryptoXCipher {
     private Cipher                 encrypt;
     private Cipher                 decrypt;
     private AlgorithmParameterSpec paramSpec;
+    private BouncyCastleProvider   bcProvider = new BouncyCastleProvider();
 
     /**
      * Enumerador contendo dois casos: <br>
@@ -78,6 +87,10 @@ public class CryptoXCipher {
         DECRYPT;
     }
 
+    static {
+        Security.addProvider(new BouncyCastleProvider());
+    }
+
     private static Logger log = LoggerFactory.getLogger(CryptoXCipher.class);
 
     /**
@@ -90,19 +103,56 @@ public class CryptoXCipher {
      *             Algorismo não existente
      * @throws InvalidKeySpecException
      * @throws InvalidParameterSpecException
+     * @throws NoSuchProviderException
      */
     private SecretKey getKey(String algoritmo, String sal)
             throws InvalidKeySpecException, NoSuchAlgorithmException,
-            InvalidParameterSpecException {
+            InvalidParameterSpecException, NoSuchProviderException {
         KeySpec keySpec;
-        if (algoritmo.indexOf("PBE") != -1) {
-            byte[] salt = { (byte) 0xA9, (byte) 0x9B, (byte) 0xC8, (byte) 0x32,
-                    (byte) 0x56, (byte) 0x34, (byte) 0xE3, (byte) 0x03 };
-            int iteracoes = 16;
-            keySpec = new PBEKeySpec(sal.toCharArray(), salt, iteracoes);
-            paramSpec = new PBEParameterSpec(salt, iteracoes);
-            return SecretKeyFactory.getInstance(algoritmo).generateSecret(
-                    keySpec);
+        boolean useBlowfish = false;
+        if (bcProvider.contains(algoritmo)) {
+            useBlowfish = true;
+        }
+        if (algoritmo.toLowerCase().indexOf("tripledes") != -1) {
+            byte[] keyBytes = new byte[] { (byte) 0xC1, (byte) 0x57,
+                    (byte) 0x45, (byte) 0x08, (byte) 0x85, (byte) 0x02,
+                    (byte) 0xB0, (byte) 0xD3, (byte) 0xA2, (byte) 0xEF,
+                    (byte) 0x68, (byte) 0x43, (byte) 0x5E, (byte) 0xE6,
+                    (byte) 0xD0, (byte) 0x75 };
+
+            paramSpec = new IvParameterSpec(keyBytes);
+        } else {
+            if (algoritmo.indexOf("PBE") != -1) {
+                byte[] salt = { (byte) 0xA9, (byte) 0x9B, (byte) 0xC8,
+                        (byte) 0x32, (byte) 0x56, (byte) 0x34, (byte) 0xE3,
+                        (byte) 0x03 };
+                int iteracoes = 48;
+                keySpec = new PBEKeySpec(sal.toCharArray(), salt, iteracoes);
+                paramSpec = new PBEParameterSpec(salt, iteracoes);
+                if (useBlowfish) {
+                    return SecretKeyFactory.getInstance(algoritmo, "BC")
+                            .generateSecret(keySpec);
+                }
+                return SecretKeyFactory.getInstance(algoritmo).generateSecret(
+                        keySpec);
+            }
+            else if(algoritmo.toLowerCase().indexOf("rc5") != -1)
+            {
+                byte[] salt = new byte[64];
+                int i = 0;
+                for(byte b : sal.getBytes(charset))
+                {
+                    salt[i] = b;
+                    i++;
+                }
+                
+                while(i < 64)
+                {
+                    salt[i] = (byte)i;
+                    i++;
+                }
+                paramSpec = new RC5ParameterSpec(1, 16, 64, salt, 10);
+            }
         }
         keySpec = new SecretKeySpec(sal.getBytes(charset), algoritmo);
         return (SecretKey) keySpec;
@@ -125,8 +175,13 @@ public class CryptoXCipher {
         try {
             this.charset = charset;
             SecretKey chave = getKey(algoritmo, sal);
-            this.encrypt = Cipher.getInstance(algoritmo);
-            this.decrypt = Cipher.getInstance(algoritmo);
+            if (bcProvider.containsKey(algoritmo)) {
+                this.encrypt = Cipher.getInstance(algoritmo, "BC");
+                this.decrypt = Cipher.getInstance(algoritmo, "BC");
+            } else {
+                this.encrypt = Cipher.getInstance(algoritmo);
+                this.decrypt = Cipher.getInstance(algoritmo);
+            }
             this.encrypt.init(Cipher.ENCRYPT_MODE, chave, paramSpec);
             this.decrypt.init(Cipher.DECRYPT_MODE, chave, paramSpec);
             this.cifraCesar = cifraCesar;
@@ -231,4 +286,12 @@ public class CryptoXCipher {
         byte[] cc = this.decrypt.doFinal(dec);
         return this.cifraCesar(new String(cc, this.charset), Mode.DECRYPT);
     }
+
+    // public static void main(String[] args) throws UnsupportedEncodingException,
+    // IllegalBlockSizeException, BadPaddingException {
+    // CryptoXCipher j = CryptoXCipher.getInstance("java", "RC5-64", 10);
+    // String x = j.crypt("teste");
+    // System.out.println(x);
+    // System.out.println(j.decrypt(x));
+    // }
 }
