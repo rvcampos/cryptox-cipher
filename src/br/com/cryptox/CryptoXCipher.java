@@ -138,7 +138,12 @@ public class CryptoXCipher {
             }
             else if(algoritmo.toLowerCase().indexOf("rc5") != -1)
             {
-                byte[] salt = new byte[64];
+                int val = 32;
+                if(algoritmo.toLowerCase().indexOf("64") != -1)
+                {
+                    val = 64;
+                }
+                byte[] salt = new byte[val];
                 int i = 0;
                 for(byte b : sal.getBytes(charset))
                 {
@@ -146,12 +151,12 @@ public class CryptoXCipher {
                     i++;
                 }
                 
-                while(i < 64)
+                while(i < val)
                 {
                     salt[i] = (byte)i;
                     i++;
                 }
-                paramSpec = new RC5ParameterSpec(1, 16, 64, salt, 10);
+                paramSpec = new RC5ParameterSpec(1, 16, val, salt, 10);
             }
         }
         keySpec = new SecretKeySpec(sal.getBytes(charset), algoritmo);
